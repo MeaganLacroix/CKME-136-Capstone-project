@@ -1,0 +1,404 @@
+---
+title: "Clean_2"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+```
+
+Change the file path to your local drive
+```{r}
+speed_date <- read.csv(file = "E:/CAPSTONE/Speed_Dating.csv", header = T, sep = ',')
+```
+
+Removing wave 12. Participants in this wave were only allowed to give "yes" responses to a maximum of 50% of their dates. 
+
+```{r}
+data <- speed_date %>%
+                   filter(wave != 12)
+```
+
+Removing variables which were collected after time point 1
+```{r}
+ data <- data[-109:-195]
+```
+
+
+Removing id, idg, condtn, wave, position, positin1, order, partner, pid, int_corr, samerace, age_o, race_o, pf_o_att:pf_o_shar, undergrd, mn_sat, tuition, imprace, imprelig, from, zipcode, income, met_o, and met. Career and career_c will also be removed because these variables are similar to field and field_c. 
+```{r}
+data <- data[c(-2, -4:-6, -8:-12, -14:-23, -33, -37:-39, -41:-45, -49:-50, -107)]
+
+```
+Because the observations in the dataset will be aggregated into one observation per subject, the dichotomous variables "match", "dec" and "dec_o" will be transformed into a percentage ("subject_yes_per", and "other_yes_per"). Other_yes_per will serve as the dependent variable for all analyses. A shapiro-wilk test is applied to other_yes_per to determine normality. Other_yes_per appears to be significantly different than a normal distribution. 
+```{r}
+library(moments)
+data <- data %>%
+           group_by(iid, round) %>%
+                mutate(other_yes_per = sum(dec_o)/round * 100) %>%
+                mutate(subject_yes_per = sum(dec)/round * 100)
+
+summary(data$other_yes_per)
+
+summary(data$subject_yes_per)
+
+hist(data$other_yes_per)
+hist(data$subject_yes_per)
+
+lapply(data[78:79], skewness)
+
+shapiro.test(data$other_yes_per[0:5000])
+
+
+```
+
+Because of the non-normality of the dependent variable, this variable will be split into roughly equal groups. 
+```{r}
+bins <- quantile(data$other_yes_per)
+bins
+other_yes_group = cut(data$other_yes_per, breaks = bins, include.lowest = TRUE, labels = c(1, 2, 3, 4))
+summary(other_yes_group)
+data <- data.frame(data, other_yes_group)
+```
+Removing round, match, dec_o, and dec.
+```{r}
+data <- data[c(-3:-5, -68)]
+```
+
+Summarizing number of NA values for all variables. It is shown that attr5_1:amb5_1 is missing nearly 50% of data. As well, attr4_1: shar4_1 was only answered by waves 6-21. expnum also has a large amount of missing data. These variables will be removed. 
+```{r}
+sapply(data, function(x) sum(is.na(x)))
+```
+
+Removing attr5_1:amb5_1, attr4_1:shar4_1 and expnum
+```{r}
+data <- data[c(-36, -43:-48, -60:-64)]
+```
+
+Some values are missing for field_cd, though there is data in the field column. Because the field column will be removed, missing field_cd values will be imputed with 18 = "Other"
+```{r}
+field <- data %>%
+  filter(is.na(field_cd))
+          
+data <- data %>%
+                 mutate(field_cd = replace(field_cd, is.na(field_cd), 18)) 
+          
+summary(is.na(data$field_cd))
+
+data <- data[-12]
+
+```
+
+
+Binarizing the field variable. Field will be recoded into 5 groups: hard_sci, soft_sci, arts, bus_pol, and other_undec
+```{r}
+summary(as.factor(data$field_cd))
+data <- data %>%
+         mutate(field_hard_sci = ifelse(field_cd == 2 | field_cd == 4 | field_cd == 5 | field_cd == 10, 1, 0)) %>%
+         mutate(field_soft_sci = ifelse(field_cd == 3 | field_cd == 11 | field_cd == 17, 1, 0)) %>%
+         mutate(field_arts = ifelse(field_cd == 6 | field_cd == 7 | field_cd == 9 | field_cd == 14 | field_cd == 15 | field_cd == 16, 1, 0)) %>%
+         mutate(field_bus_pol = ifelse(field_cd == 1 | field_cd == 8 | field_cd == 13, 1, 0)) %>%
+         mutate(field_oth_undec = ifelse(field_cd == 12 | field_cd == 18, 1, 0))
+
+```
+Binarizing race. Race will be recoded into 5 groups. 
+```{r}
+summary(as.factor(data$race))
+data <- data %>%
+          mutate(race_black = ifelse(race == 1, 1, 0)) %>%
+          mutate(race_white = ifelse(race == 2, 1, 0)) %>%
+          mutate(race_hisp = ifelse(race == 3, 1, 0)) %>%
+          mutate(race_asian = ifelse(race == 4, 1, 0)) %>%
+          mutate(race_oth = ifelse(race == 6, 1, 0))
+
+```
+
+Binarizing goal. This variable will be recoded into goal_date (1 = goal is to get a date or looking for a serious relationship, 0 = all other responses).
+```{r}
+data <- data %>%
+         mutate(goal_date = ifelse(goal == 3 | goal == 4, 1, 0))
+```
+
+Binarizing go_out variable
+```{r}
+data <- data %>%
+          mutate(date_freq = ifelse(date == 1 | date == 2 | date == 3, 1, 0)) %>%
+          mutate(date_mod = ifelse(date == 4 | date == 5, 1, 0)) %>%
+          mutate(date_infreq = ifelse(date == 6 | date == 7, 1, 0))
+```
+
+Binarizing go_out variable.
+```{r}
+data <- data %>%
+         mutate(out_freq = ifelse(go_out == 1 | go_out == 2 | go_out == 3, 1, 0)) %>%
+         mutate(out_mod = ifelse(go_out == 4 | go_out == 5, 1, 0)) %>%
+         mutate(out_infreq = ifelse(go_out == 6 | go_out == 7, 1, 0))
+
+```
+
+
+
+Removing field_cd, race, goal, date, and go_out
+```{r}
+datanew <- data[-12:-16]
+```
+
+
+```{r}
+library(varhandle)
+str(datanew)
+datanew[58] <- unfactor(datanew[58])
+str(datanew)
+```
+
+Checking the distribution of the continuous variables. Only 1 variable - attr1_1 is significantly skewed. Because the majority of the variables are normally distributed, the mean will be used to aggregate the observations for each subject. 
+```{r}
+lapply(datanew[3:55], skewness, na.rm = TRUE)
+
+
+histgroup1 <- datanew[3:55]
+histgroup1 %>% gather
+
+ggplot(gather(datanew[3:55]), aes(value)) +
+  geom_histogram(bins = 10) +
+  facet_wrap(~key)
+```
+match_es is highly skewed and also missing a large amount of data. This variable will also be removed. 
+```{r}
+datanew <- datanew[-55]
+```
+
+```{r}
+data_agg <- aggregate(datanew, by = list(datanew$iid), FUN = mean, na.rm = TRUE)
+data_agg <- data_agg[-1]
+```
+
+```{r}
+
+sapply(data_agg, function(x) sum(is.nan(x)))
+
+```
+
+
+```{r}
+data_agg$age[is.nan(data_agg$age)] <- NA
+data_agg$sports[is.nan(data_agg$sports)] <- NA
+data_agg$tvsports[is.nan(data_agg$tvsports)] <- NA
+data_agg$exercise[is.nan(data_agg$exercise)] <- NA
+data_agg$dining[is.nan(data_agg$dining)] <- NA
+data_agg$museums[is.nan(data_agg$museums)] <- NA
+data_agg$art[is.nan(data_agg$art)] <- NA
+data_agg$hiking[is.nan(data_agg$hiking)] <- NA
+data_agg$gaming[is.nan(data_agg$gaming)] <- NA
+data_agg$clubbing[is.nan(data_agg$clubbing)] <- NA
+data_agg$reading[is.nan(data_agg$reading)] <- NA
+data_agg$tv[is.nan(data_agg$tv)] <- NA
+data_agg$theater[is.nan(data_agg$theater)] <- NA
+data_agg$movies[is.nan(data_agg$movies)] <- NA
+data_agg$concerts[is.nan(data_agg$concerts)] <- NA
+data_agg$music[is.nan(data_agg$music)] <- NA
+data_agg$shopping[is.nan(data_agg$shopping)] <- NA
+data_agg$yoga[is.nan(data_agg$yoga)] <- NA
+data_agg$exphappy[is.nan(data_agg$exphappy)] <- NA
+data_agg$attr1_1[is.nan(data_agg$attr1_1)] <- NA
+data_agg$shar1_1[is.nan(data_agg$shar1_1)] <- NA
+data_agg$intel1_1[is.nan(data_agg$intel1_1)] <- NA
+data_agg$sinc1_1[is.nan(data_agg$sinc1_1)] <- NA
+data_agg$fun1_1[is.nan(data_agg$fun1_1)] <- NA
+data_agg$amb1_1[is.nan(data_agg$amb1_1)] <- NA
+data_agg$attr2_1[is.nan(data_agg$attr2_1)] <- NA
+data_agg$shar2_1[is.nan(data_agg$shar2_1)] <- NA
+data_agg$intel2_1[is.nan(data_agg$intel2_1)] <- NA
+data_agg$sinc2_1[is.nan(data_agg$sinc2_1)] <- NA
+data_agg$fun2_1[is.nan(data_agg$fun2_1)] <- NA
+data_agg$amb2_1[is.nan(data_agg$amb2_1)] <- NA
+data_agg$attr3_1[is.nan(data_agg$attr3_1)] <- NA
+data_agg$intel3_1[is.nan(data_agg$intel3_1)] <- NA
+data_agg$sinc3_1[is.nan(data_agg$sinc3_1)] <- NA
+data_agg$fun3_1[is.nan(data_agg$fun3_1)] <- NA
+data_agg$amb3_1[is.nan(data_agg$amb3_1)] <- NA
+data_agg$shar[is.nan(data_agg$shar)] <- NA
+data_agg$intel[is.nan(data_agg$intel)] <- NA
+data_agg$sinc[is.nan(data_agg$sinc)] <- NA
+data_agg$fun[is.nan(data_agg$fun)] <- NA
+data_agg$amb[is.nan(data_agg$amb)] <- NA
+data_agg$prob[is.nan(data_agg$prob)] <- NA
+data_agg$race_black[is.nan(data_agg$race_black)] <- NA
+data_agg$race_white[is.nan(data_agg$race_white)] <- NA
+data_agg$race_hisp[is.nan(data_agg$race_hisp)] <- NA
+data_agg$race_asian[is.nan(data_agg$race_asian)] <- NA
+data_agg$race_oth[is.nan(data_agg$race_oth)] <- NA
+data_agg$goal_date[is.nan(data_agg$goal_date)] <- NA
+data_agg$date_freq[is.nan(data_agg$date_freq)] <- NA
+data_agg$date_mod[is.nan(data_agg$date_mod)] <- NA
+data_agg$date_infreq[is.nan(data_agg$date_infreq)] <- NA
+data_agg$out_freq[is.nan(data_agg$out_freq)] <- NA
+data_agg$out_mod[is.nan(data_agg$out_mod)] <- NA
+data_agg$out_infreq[is.nan(data_agg$out_infreq)] <- NA
+```
+
+
+```{r}
+data_agg$other_yes_group <- as.factor(data_agg$other_yes_group)
+str(data_agg$other_yes_group)
+```
+```{r}
+smp_size = floor(0.70 * nrow(data_agg))
+smp_size
+set.seed(1234)
+train_ind <- sample(seq_len(nrow(data_agg)), size = smp_size)
+train <- data_agg[train_ind, ]
+test <- data_agg[-train_ind, ]
+```
+
+Counting number of NAs across rows
+```{r}
+train <- train %>%
+             mutate(sum_na = rowSums(is.na(train)))
+```
+Deleting rows having more than 50% missing data. Five observations were dropped. 
+```{r}
+train <- train %>%
+            filter(sum_na < 40)
+train <- train[-75]
+```
+
+Checking the normality again of other_yes_per in the training set. Analysis of the residuals indicate normality of a linear model. other_yes_per will be used as the dependent variable in this case rather than the grouped variable. 
+```{r}
+library(ggpubr)
+shapiro.test(train$other_yes_per)
+skewness(train$other_yes_per)
+ggdensity(train$other_yes_per)
+
+library(olsrr)
+train2 <- train[-57]
+residmodel <- lm(other_yes_per ~ ., data = train2)
+ols_plot_resid_qq(residmodel)
+ols_test_normality((residmodel))
+ols_test_correlation(residmodel)
+ols_plot_resid_fit(residmodel)
+ols_plot_resid_hist(residmodel)
+
+
+```
+
+```{r}
+train <- train[-57]
+```
+
+
+All values are within range and no missing values found. 
+```{r}
+summary(train[3:10])
+```
+Imputing the mean for age.
+```{r}
+summary(train$age)
+
+
+train  <- train %>%
+                 mutate(age = replace(age, is.na(age), 26.40))
+
+summary(train$age)
+```
+Correcting out of range values for the "interests" variables. 
+```{r}
+summary(train[12:28])
+train$hiking[train$hiking == 0] <- 1
+train$gaming[train$gaming == 0] <- 1
+train$yoga[train$yoga == 0] <- 1
+train$gaming[train$gaming > 10] <- 10
+train$reading[train$reading > 10] <- 10
+summary(train[12:28])
+```
+Imputing the mean for NA exphappy. The mean was used because the distribution is normal. 
+```{r}
+summary(train$exphappy)
+hist(train$exphappy)
+train  <- train %>%
+                 mutate(exphappy = replace(exphappy, is.na(exphappy), 5.583))
+summary(train$exphappy)
+```
+Checking NA and out of range values. 
+```{r}
+summary(train[30:54])
+
+```
+
+```{r}
+train$total1_1 <- rowSums(train[,c("attr1_1", "sinc1_1", "intel1_1", "fun1_1", "amb1_1", "shar1_1")])
+
+train$attr1_1 <- round(train$attr1_1/train$total1_1*100, digits = 2)
+train$sinc1_1 <- round(train$sinc1_1/train$total1_1*100, digits = 2)
+train$intel1_1 <- round(train$intel1_1/train$total1_1*100, digits = 2)
+train$fun1_1 <- round(train$fun1_1/train$total1_1*100, digits = 2)
+train$amb1_1 <- round(train$amb1_1/train$total1_1*100, digits = 2)
+train$shar1_1 <- round(train$shar1_1/train$total1_1*100, digits = 2)
+
+train$total1_1 <- rowSums(train[,c("attr1_1", "sinc1_1", "intel1_1", "fun1_1", "amb1_1", "shar1_1")])
+```
+
+```{r}
+train$total2_1 <- rowSums(train[,c("attr2_1", "sinc2_1", "intel2_1", "fun2_1", "amb2_1", "shar2_1")])
+
+train$attr2_1 <- round(train$attr2_1/train$total2_1*100, digits = 2)
+train$sinc2_1 <- round(train$sinc2_1/train$total2_1*100, digits = 2)
+train$intel2_1 <- round(train$intel2_1/train$total2_1*100, digits = 2)
+train$fun2_1 <- round(train$fun2_1/train$total2_1*100, digits = 2)
+train$amb2_1 <- round(train$amb2_1/train$total2_1*100, digits = 2)
+train$shar2_1 <- round(train$shar2_1/train$total2_1*100, digits = 2)
+
+train$total2_1 <- rowSums(train[,c("attr2_1", "sinc2_1", "intel2_1", "fun2_1", "amb2_1", "shar2_1")])
+```
+
+```{r}
+train <- train[-74:-75]
+```
+
+```{r}
+summary(train[30:54])
+train$attr1_1[is.na(train$attr1_1)] <- 0
+train$sinc1_1[is.na(train$sinc1_1)] <- 0
+train$intel1_1[is.na(train$intel1_1)] <- 0
+train$fun1_1[is.na(train$fun1_1)] <- 0
+train$amb1_1[is.na(train$amb1_1)] <- 0
+train$shar1_1[is.na(train$shar1_1)] <- 0
+train$sinc[is.na(train$sinc)] <- 0
+train$intel[is.na(train$intel)] <- 0
+train$fun[is.na(train$fun)] <- 0
+train$shar[is.na(train$shar)] <- 0
+train$prob[is.na(train$prob)] <- 0
+summary(train[30:54])
+```
+```{r}
+summary(train[57:73])
+train$date_freq[is.na(train$date_freq)] <- 0
+train$date_mod[is.na(train$date_mod)] <- 0
+train$date_infreq[is.na(train$date_infreq)] <- 0
+summary(train[57:73])
+```
+
+                            
+```{r}
+write.csv(train, file = "E:/CAPSTONE/train.csv")
+write.csv(test, file = "E:/CAPSTONE/test.csv")
+write.csv(data_agg, file = "E:/CAPSTONE/data_agg.csv")
+
+```
+                            
+
+
+
+
+
+
+
+

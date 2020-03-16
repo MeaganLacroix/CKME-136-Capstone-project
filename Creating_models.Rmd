@@ -1,0 +1,271 @@
+---
+title: "Creating_Models"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+```{r}
+train_new <- read.csv(file = "E:/CAPSTONE/train_new.csv", header = T, sep = ',')
+test_new <- read.csv(file = "E:/CAPSTONE/test_new.csv", header = T, sep = ',')
+```
+
+```{r}
+train_new <- train_new[-1]
+test_new <- test_new[-1]
+```
+
+Model #1 - Using multiple linear regression with backward selection to choose the most important variables in a model where other_yes_per is the dependent variable. According to this model, the most relevant variables are attr_o, sinc_o, intel_o, amb_o, like_o, prob_o, tvsports, dining, reading, shopping, attr1_1, intel1_1, amb1_1, sinc2_1, attr3_1, fun3_1, subject_yes_per, gender, field_soft_sci, out_freq, and out_mod. Approximately 74% of the variance in other_yes_per can be explained by its relationship to these variables. In this model, AIC was reduced from 1935.12 to 1872.65. 
+```{r}
+library(MASS)
+full <- lm(other_yes_per ~., data = train_new)
+stepB <- stepAIC(full, direction = "backward", trace = TRUE)
+summary(stepB)
+```
+
+Filtering variables that were input into the last model of the backwards selection regression model.
+
+```{r}
+train_new_mod1 <- train_new[c(1:4, 6, 8:9, 12, 14, 20, 26, 29, 31, 33, 36, 41, 43, 54:55, 57, 70:71)]
+```
+
+```{r}
+test_new_mod1 <- test_new[c(1:4, 6, 8:9, 12, 14, 20, 26, 29, 31, 33, 36, 41, 43, 54:55, 57, 70:71)]
+
+```
+
+Determining the distribution of the prediction errors in the test set. The errors appear normally distributed around zero. 
+```{r}
+model1_mlr <- lm(other_yes_per~ ., data=train_new_mod1) 
+prediction1 <- predict(model1_mlr, interval="prediction", newdata =test_new_mod1)
+errors <- prediction1[,"fit"] - test_new_mod1$other_yes_per
+hist(errors)
+```
+
+
+Computing the root mean square error and finding the percentage of cases with less than 25% error. *COME BACK TO THIS, NOT SURE IF DONE PROPERLY*
+```{r}
+rmse1 <- sqrt(sum((prediction1[,"fit"] - test_new_mod1$other_yes_per)^2, na.rm = TRUE)/nrow(test_new_mod1))
+rel_change1 <- 1 - ((test_new_mod1$other_yes_per - abs(errors)) / test_new_mod1$other_yes_per)
+
+pred25_1 <- table(rel_change1<0.25)["TRUE"] / nrow(test_new_mod1)
+table(rel_change1)
+paste("RMSE:", rmse1)
+paste("PRED(25):", pred25_1)
+```
+
+Determining variables of importance using an information gain method. The important variables found are attr_o, fun_o, shar_o, like_o, prob_o, and subject_yes_per. This finding shares some overlap with what was found with the linear model. 
+```{r}
+library(FSelector)
+weights <- information.gain(other_yes_per~., train_new)
+subset <- cutoff.k(weights, 20)
+f <- as.simple.formula(subset, "other_yes_per")
+print(f)
+print(weights)
+```
+
+Determining the most important variables using Boruta. Important variables were found to be attr_o, like_o, shar_o, fun_o, prob_o, subject_yes_per, and intel_o. Moderately important variables are out_freq, race_asian, amb_o, and out_mod. This again shares some overlap with what was found with the linear model and also with what was found using information gain. Overall attr_o appears to be the most important variable across feature selection methods. 
+```{r}
+library(Boruta)
+boruta_output <- Boruta(other_yes_per ~., data = train_new, doTrace = 0)
+boruta_sig <- getSelectedAttributes(boruta_output, withTentative = TRUE)
+print(boruta_sig)
+
+imps <- attStats(boruta_output)
+imps2 = imps[imps$decision != 'Rejected', c('meanImp', 'decision')]
+head(imps2[order(-imps2$meanImp), ]) 
+plot(boruta_output, cex.axis=.7, las=2, xlab="", main="Variable Importance") 
+```
+Creating a tree model using the variables identified as important in the linear model. 
+```{r}
+library(tree)
+tree.date=tree(other_yes_per~., data = train_new_mod1)
+summary(tree.date)
+```
+
+This tree shows that higher attr_o ratings (>= 6.49) and higher like_o ratings (>= 6.82) correspond to higher other_yes_per ratings. 
+```{r}
+plot(tree.date)
+text(tree.date,pretty=0)
+```
+10-fold cross-validation will now be used with the cv.tree function to determine the optimal level of tree complexity. The lowest cross-validation error was for the tree with 5 nodes.
+```{r}
+cv.tree.date <- cv.tree(tree.date)
+cv.tree.date
+```
+```{r}
+plot(cv.tree.date$size,cv.tree.date$dev,type='b')
+```
+```{r}
+prune.date=prune.tree(tree.date,best=5)
+summary(prune.date)
+```
+```{r}
+plot(prune.date)
+text(prune.date,pretty=0)
+```
+Calulating RMSE for the pruned and unpruned trees. RMSE appears slightly better for the unpruned tree. *Why would this happen if the cross-validation error identified 5 leaf nodes as "best"?* 
+```{r}
+library(Metrics)
+tree.date.pred <- predict(object = tree.date, newdata = test_new_mod1)
+rmse(actual = test_new_mod1$other_yes_per, predicted = tree.date.pred)
+
+prune.date.pred <- predict(object = prune.date, newdata = test_new_mod1)
+rmse(actual = test_new_mod1$other_yes_per, predicted = prune.date.pred)
+
+```
+
+
+Plotting a regression tree with the rpart package. This model is nearly identical to the above models, however fun3_1 is used here. 
+```{r}
+library(rpart)
+library(rpart.plot)
+rpart.date <- rpart(formula = other_yes_per ~., data = train_new_mod1, method = "anova")
+rpart.plot(x = rpart.date, yesno = 2, type = 0, extra = 0)
+summary(rpart.date)
+```
+The RMSE of this model is slightly worse than the unpruned tree model but slightly better than the pruned tree. 
+```{r}
+rpart.pred <- predict(object = rpart.date, newdata = test_new_mod1)
+rmse(actual = test_new_mod1$other_yes_per, predicted = rpart.pred)
+```
+Tuning the hyperparameters of the rpart tree model
+```{r}
+plotcp(rpart.date)
+print(rpart.date$cptable)
+```
+Getting optimal cp value based on cross-validation error
+```{r}
+opt_index <- which.min(rpart.date$cptable[ , "xerror"])
+cp_opt <- rpart.date$cptable[opt_index, "CP"]
+rpart.date.opt <- prune(tree = rpart.date, cp = cp_opt)
+rpart.plot(x = rpart.date.opt, yesno = 2, type = 0, extra = 0)
+```
+RMSE is higher for this model, indicating poorer model performance. 
+```{r}
+rpart.date.opt.pred <- predict(object = rpart.date.opt, newdata = test_new_mod1)
+rmse(actual = test_new_mod1$other_yes_per, predicted = rpart.date.opt.pred)
+```
+
+
+Generating a grid search of hyperparameter values
+```{r}
+splits <- seq(10, 210, 10)
+depths <- seq(2, 15, 1)
+hyper_grid <- expand.grid(minsplit = splits, maxdepth = depths) # creating dataframe of all possible combos
+print(hyper_grid)
+```
+
+```{r}
+grid.search.models <- list() #creating empty list to store the models
+```
+
+Executing the grid search using a for loop
+```{r}
+ for(i in 1:nrow(hyper_grid)) {
+   minsplit <- hyper_grid$minsplit[i]
+   maxdepth <- hyper_grid$maxdepth[i]
+   
+   grid.search.models[[i]] <- rpart(formula = other_yes_per ~., 
+                        data = train_new_mod1,
+                        method = "anova",
+                        minsplit = minsplit,
+                        maxdepth = maxdepth)
+ }
+```
+
+Compute the rmse values for each model
+```{r}
+rmse_values <- c() #creating empty vector to store rmse values
+for(i in 1:length(grid.search.models)) { #compute test rmse using for loop
+  model <- grid.search.models[[i]] #retrieve ith model from the list
+  grid.search.pred <- predict(object = model, #generate predictions
+                              newdata = test_new_mod1)
+  rmse_values[i] <- rmse(actual = test_new_mod1$other_yes_per, predicted = grid.search.pred) #compute test rmse and add to the vector
+}
+```
+
+Finding the model with the smallest rmse. This model has the best (lowest) RMSE value of all the models tested so far. 
+```{r}
+best_model <- grid.search.models[[which.min(rmse_values)]]
+best_model$control
+rpart.plot(x = best_model, yesno = 2, type = 0, extra = 0)
+
+print(min(rmse_values))
+```
+
+
+Building a random forest model using default values.  
+```{r}
+library(randomForest)
+set.seed(1)
+rf_model=randomForest(other_yes_per~., data= train_new_mod1)
+rf_model
+
+```
+*Not sure why rmse function not working here* 
+```{r}
+rf_model_pred <- predict(object = rf_model, newdata = test_new_mod1)
+
+rmse(actual = test_new_mod1$other_yes_per, predicted = rf_model_pred)
+```
+
+*PLEASE IGNORE BELOW. WILL MODIFY THIS LATER*
+
+Using bagging with a random forest model has reduced some of the prediction error in the test set. 
+```{r}
+yhat.bag = predict(bag.date, interval = "prediction", newdata= test_new_mod1)
+plot(yhat.bag, date.test)
+abline(0,1)
+mean((yhat.bag-date.test)^2, na.rm = TRUE)
+```
+Estimating the importance of the variables in the random forest model. %IncMSE indicates the increase of the Mean Squared Error when given variable is randomly permuted. The most important variables appear to be attr_o, like_o, and intel_o. Because IncNodePurity is biased in these models it will not be used to to make any decisions about importance. 
+```{r}
+importance(bag.date)
+varImpPlot(bag.date)
+```
+Trying the random forest model with mtry set to default. This has slightly reducted the prediction error in the test set. 
+```{r}
+bag.date2=randomForest(other_yes_per~., data= train_new_mod1, importance=TRUE)
+bag.date2
+
+yhat.bag2 = predict(bag.date2, interval = "prediction", newdata= test_new_mod1)
+plot(yhat.bag2, date.test)
+abline(0,1)
+mean((yhat.bag2-date.test)^2, na.rm = TRUE)
+```
+intel_o has been replaced with prob_o as a more important variable in this model. *NOT SURE WHAT THIS MEANS* 
+```{r}
+importance(bag.date2)
+varImpPlot(bag.date2)
+```
+```{r}
+tune.date <- tuneRF(train_new_mod1[, -18], train_new_mod1[ , 18], ntreeTry = 500, stepFactor = 1, doBest = TRUE)
+tune.date
+```
+
+```{r}
+oob.err1 = double(21)
+test.err1 = double(21)
+for(mtry in 1:21){ #creating loop from 1:21
+  fit = randomForest(other_yes_per~., data = train_n_mod1,  mtry=mtry, ntree = 350)
+  oob.err1[mtry] = fit$mse[350]
+  pred = predict(fit, test_n_mod1, na.rm = TRUE) #predicting on the test set
+  test.err1[mtry] = with(test_n_mod1, na.rm = TRUE, mean( (other_yes_per-pred)^2, na.rm = TRUE)) #extracting mse
+}
+```
+
+COME BACK TO THIS. NOT SURE HOW TO INTERPRET
+```{r}
+matplot(1:mtry, cbind(test.err1, oob.err1), pch = 23, col = c("red", "blue"), type = "b", ylab="Mean Squared Error")
+legend("topright", legend = c("OOB", "Test"), pch = 23, col = c("red", "blue"))
+```
+

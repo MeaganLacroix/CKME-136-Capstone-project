@@ -207,65 +207,94 @@ Building a random forest model using default values.
 ```{r}
 library(randomForest)
 set.seed(1)
-rf_model=randomForest(other_yes_per~., data= train_new_mod1)
+rf_model=randomForest(other_yes_per~., data= train_new_mod1, importance = TRUE)
 rf_model
 
 ```
-*Not sure why rmse function not working here* 
+*Not sure why rmse function not working here (think it is because of NA values). Calculating manually here* This random forest model has the best rmse value compared to all other models tested. 
 ```{r}
 rf_model_pred <- predict(object = rf_model, newdata = test_new_mod1)
-
-rmse(actual = test_new_mod1$other_yes_per, predicted = rf_model_pred)
+date.test.yes <- test_new_mod1$other_yes_per
+sqrt(mean((rf_model_pred-date.test.yes)^2, na.rm = TRUE))
+#rmse(actual = test_new_mod1$other_yes_per, predicted = rf_model_pred)
 ```
 
-*PLEASE IGNORE BELOW. WILL MODIFY THIS LATER*
 
-Using bagging with a random forest model has reduced some of the prediction error in the test set. 
 ```{r}
-yhat.bag = predict(bag.date, interval = "prediction", newdata= test_new_mod1)
-plot(yhat.bag, date.test)
+plot(rf_model_pred, date.test.yes)
 abline(0,1)
-mean((yhat.bag-date.test)^2, na.rm = TRUE)
+plot(rf_model)
+
 ```
-Estimating the importance of the variables in the random forest model. %IncMSE indicates the increase of the Mean Squared Error when given variable is randomly permuted. The most important variables appear to be attr_o, like_o, and intel_o. Because IncNodePurity is biased in these models it will not be used to to make any decisions about importance. 
+Estimating the importance of the variables in the random forest model. %IncMSE indicates the increase of the Mean Squared Error when given variable is randomly permuted. The most important variables appear to be like_o, atrr_o, and subject_yes_per. Because IncNodePurity is biased in these models it will not be used to to make any decisions about importance. 
 ```{r}
-importance(bag.date)
-varImpPlot(bag.date)
+importance(rf_model)
+varImpPlot(rf_model)
 ```
+
+Determining the best value of mtry for the random forest model using tune RF. It appears that mtry = 7 is the best option
+```{r}
+rf.mtry <- tuneRF(train_new_mod1[, -18], train_new_mod1[ , 18], ntreeTry = 500, stepFactor = 1, doBest = TRUE)
+rf.mtry
+
+```
+Tuning the hyperparameters of the random forest model using a grid search *COME BACK TO SEQUENCES SET FOR THE HYPER.GRID. JUSTIFY WITH LIT SEARCH*
+```{r}
+mtry <- seq(5, 21, 2) #best mtry may be 7, selecting a range above and below that
+nodesize <- seq(4, 10, 2) #default for regression = 5, selecting a range above and below that
+sampsize <- nrow(train_new_mod1) * c(0.6, 0.7, 0.8) #default sampsize = 63.2%, selecting a range above and below that
+hyper_grid <- expand.grid(mtry = mtry, nodesize = nodesize, sampsize = sampsize)
+hyper_grid
+```
+
+Writing a for loop over the rows of hyper_grid to train the grid models. *COME BACK TO THIS. LOOP NOT WORKING*
+```{r}
+#rf.grid.rmse <- c()
+#for(i in 1:nrow(hyper_grid)) {
+    
+ #   rf.grid.model <- randomForest(formula = other_yes_per~., data= train_new_mod1,
+  #                                   mtry = hyper_grid$mtry[i],
+   #                                  nodesize = hyper_grid$nodesize[i],
+    #                                 sampsize = hyper_grid$sampsize[i])
+    #rf.pred <- predict(object = rf.grid.model, newdata = test_new_mod1)
+    #rf.grid.rmse[i] <- sqrt(mean((rf.pred-date.test.yes)^2, na.rm = TRUE))
+                                  
+#}
+```
+
+*PLEASE IGNORE BELOW. COMING BACK TO THIS*
+
 Trying the random forest model with mtry set to default. This has slightly reducted the prediction error in the test set. 
 ```{r}
-bag.date2=randomForest(other_yes_per~., data= train_new_mod1, importance=TRUE)
-bag.date2
+#bag.date2=randomForest(other_yes_per~., data= train_new_mod1, importance=TRUE)
+#bag.date2
 
-yhat.bag2 = predict(bag.date2, interval = "prediction", newdata= test_new_mod1)
-plot(yhat.bag2, date.test)
-abline(0,1)
-mean((yhat.bag2-date.test)^2, na.rm = TRUE)
+#yhat.bag2 = predict(bag.date2, interval = "prediction", newdata= test_new_mod1)
+#plot(yhat.bag2, date.test)
+#abline(0,1)
+#mean((yhat.bag2-date.test)^2, na.rm = TRUE)
 ```
 intel_o has been replaced with prob_o as a more important variable in this model. *NOT SURE WHAT THIS MEANS* 
 ```{r}
-importance(bag.date2)
-varImpPlot(bag.date2)
-```
-```{r}
-tune.date <- tuneRF(train_new_mod1[, -18], train_new_mod1[ , 18], ntreeTry = 500, stepFactor = 1, doBest = TRUE)
-tune.date
+#importance(bag.date2)
+#varImpPlot(bag.date2)
 ```
 
+
 ```{r}
-oob.err1 = double(21)
-test.err1 = double(21)
-for(mtry in 1:21){ #creating loop from 1:21
-  fit = randomForest(other_yes_per~., data = train_n_mod1,  mtry=mtry, ntree = 350)
-  oob.err1[mtry] = fit$mse[350]
-  pred = predict(fit, test_n_mod1, na.rm = TRUE) #predicting on the test set
-  test.err1[mtry] = with(test_n_mod1, na.rm = TRUE, mean( (other_yes_per-pred)^2, na.rm = TRUE)) #extracting mse
-}
+#oob.err1 = double(21)
+#test.err1 = double(21)
+#for(mtry in 1:21){ #creating loop from 1:21
+ # fit = randomForest(other_yes_per~., data = train_n_mod1,  mtry=mtry, ntree = 350)
+  #oob.err1[mtry] = fit$mse[350]
+  #pred = predict(fit, test_n_mod1, na.rm = TRUE) #predicting on the test set
+  #test.err1[mtry] = with(test_n_mod1, na.rm = TRUE, mean( (other_yes_per-pred)^2, na.rm = TRUE)) #extracting mse
+#}
 ```
 
 COME BACK TO THIS. NOT SURE HOW TO INTERPRET
 ```{r}
-matplot(1:mtry, cbind(test.err1, oob.err1), pch = 23, col = c("red", "blue"), type = "b", ylab="Mean Squared Error")
-legend("topright", legend = c("OOB", "Test"), pch = 23, col = c("red", "blue"))
+#matplot(1:mtry, cbind(test.err1, oob.err1), pch = 23, col = c("red", "blue"), type = "b", ylab="Mean Squared Error")
+#legend("topright", legend = c("OOB", "Test"), pch = 23, col = c("red", "blue"))
 ```
 

@@ -1,0 +1,142 @@
+---
+title: "Correlations and Checking Assumptions"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+
+```{r}
+train <- read.csv(file = "E:/CAPSTONE/train.csv", header = T, sep = ',')
+test <- read.csv(file = "E:/CAPSTONE/test.csv", header = T, sep = ',')
+```
+
+```{r}
+train <- train[-1]
+test <- test[-1]
+```
+
+
+Checking the assumptions of linear regression using residuals diagnostics. These diagnostics suggest that the assumption of normality, linearity, and homoscedasticity of the residuals is being met. 
+```{r}
+library(olsrr)
+residmodel <- lm(other_yes_per ~ ., data = train)
+ols_plot_resid_qq(residmodel)
+ols_test_normality((residmodel))
+ols_test_correlation(residmodel)
+ols_plot_resid_fit(residmodel)
+ols_plot_resid_hist(residmodel)
+```
+
+
+                                                      CORRELATIONS
+
+
+A significant negative correlation was found between gender and other_yes_per. This indicates that higher other_yes_per scores are associated with gender = 0 (female).
+```{r}
+cor.test(train$other_yes_per, train$gender, method = "pearson")
+```
+
+Analyzing the correlation between age and other_yes_per. A significant negative correlation was found. As age increases, number of yes responses decrease. 
+```{r}
+cor.test(train$age, train$other_yes_per, method = "pearson")
+```
+
+
+other_yes_per is highly correlated with all of the partner rating variables as well as the number of subject yes responses.
+```{r}
+library(Hmisc)
+partnerattrvars <- train[c(2:9, 53:54)]
+rcorr(as.matrix(partnerattrvars, type = "pearson"))
+```
+
+
+other_yes_per has a significant negative correlation with sinc1_1 and shar1_1. Subjects who value sincerity and shared interests in their partners receive fewer yes responses from partners. 
+```{r}
+attr1vars <- train[c(29:33, 53:54)]
+rcorr(as.matrix(attr1vars, type = "pearson"))
+```
+
+other_yes_per is significantly positively correlated with attr2_1, and significantly negatively correlated with sinc2_1.
+```{r}
+attr2vars <- train[c(34:39, 53:54)]
+rcorr(as.matrix(attr2vars, type = "pearson"))
+```
+
+other_yes_per is significantly positively correlated with attr3_1 and fun3_1. 
+```{r}
+attr3vars <- train[c(40:44, 53:54)]
+rcorr(as.matrix(attr3vars, type = "pearson"))
+```
+
+other_yes_per is significantly positively correlated with sinc and prob
+```{r}
+subject_attrvars <- train[45:54]
+rcorr(as.matrix(subject_attrvars, type = "pearson"))
+```
+
+other_yes_per is significantly positively correlated with interests in exercise, hiking, shopping, and yoga, and negatively correlated with interests in tv.
+```{r}
+interestvars <- train[c(11:27, 53)]
+rcorr(as.matrix(interestvars, type = "pearson"))
+```
+
+other_yes_per is not correlated with exphappy
+```{r}
+cor.test(train$exphappy, train$other_yes_per, method = "pearson")
+```
+
+other_yes_per is significantly negatively correlated with field_hard_sci, and positively correlated with field_bus_pol
+```{r}
+fieldvars <- train[c(53:59)]
+rcorr(as.matrix(fieldvars, type = "pearson"))
+```
+
+other_yes_per is significantly positively correlated with race_white and negatively correlated with race_asian. 
+
+```{r}
+racevars <- train[c(60:64, 53:54)]
+rcorr(as.matrix(racevars, type = "pearson"))
+```
+
+other_yes_per is significantl positively correlated with date_freq and negatively correlated with date_infreq
+
+```{r}
+datevars <- train[c(65:68, 53:54)]
+rcorr(as.matrix(datevars, type = "pearson"))
+```
+
+other_yes_per is significantly positively correlated with out_freq and negatively correlated with out_mod and out_infreq. 
+
+```{r}
+outvars <- train[c(69:71, 53:54)]
+rcorr(as.matrix(outvars, type = "pearson"))
+```
+Correlations among all of the independent variables were calculated in order to determine the presence of multicollinearity and singularity (defined here as a correlation > .90). No variable pair was observed to have a correlation greater than .9, indicating no multicollinearity or singuarity.  
+```{r}
+sig <- .1
+date_cor <- train[-53]
+corr <- cor(date_cor)
+corr[lower.tri(corr, diag = TRUE)] <- NA
+corr[corr==1] <- NA
+corr <- as.data.frame(as.table(corr))
+corr <- na.omit(corr)
+corr <- subset(corr, abs(Freq) > sig)
+corr <- corr[order(-abs(corr$Freq)),]
+print(corr)
+```
+
+
+```{r}
+write.csv(train, file = "E:/CAPSTONE/train_new.csv")
+write.csv(test, file = "E:/CAPSTONE/test_new.csv")
+```
+
